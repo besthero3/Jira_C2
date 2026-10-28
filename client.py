@@ -1,8 +1,13 @@
+import datetime
 import os
 import socket
-from ipaddress import ip_address
+import time
+from time import timezone
+from datetime import datetime, timezone
+
 
 import requests
+import schedule
 from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 
@@ -24,6 +29,7 @@ command_EPIC_ID = "JC-9"
 global team_num
 global epic_ID
 global ip_addr
+issue_key = None
 
 #basic configuration
 auth = HTTPBasicAuth(
@@ -93,20 +99,97 @@ def ip_mapping():
         team_num = IPsplitByOctet[1]
         epic_ID = test_epic_ID
 
-    print(team_num)
-    print(epic_ID)
-    print(ip_addr)
+
+def callback():
+    global url
+    global team_num
+    global epic_ID
+    global ip_addr
+    global issue_key
+
+    if issue_key is None:
+        return
+
+    timestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.000%z"
+    )
+
+    payload = {
+        "fields": {
+            "customfield_10049": timestamp
+        }
+    }
+
+    requests.put(url=f"{url}/rest/api/3/issue/{issue_key}", json=payload, headers=headers, auth=auth, timeout=20)
 
 def init():
-    pass
+    #have to check if exists already
+
+    global url
+    global team_num
+    global epic_ID
+    global ip_addr
+    global project_key
+    global issue_key
+
+    timestamp = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.000%z"
+    )
+    existing_host = False
+
+    team_num = int(team_num)
+
+    #JQL vs API for customfield stuff
+    search = {"jql": f"project = {project_key} AND cf[10050] = {team_num}",
+              "fields": ["summary", "customfield_10048"]}
+
+    response = requests.post(url=f"{url}/rest/api/3/search/jql", json=search, headers=headers, auth=auth, timeout=20)
+
+    print(response.json())
+    for IP in response.json()["issues"]:
+        #JSON custom field format different than JQL
+        #.get prevents key error
+        if IP["fields"].get("customfield_10048") == str(ip_addr):
+            existing_host = True
+            issue_key = IP["key"]
+            print("Found Original Story " + issue_key)
+
+            #updates the time
+            callback()
+            break
+
+    if existing_host == False:
+        payload = {
+            "fields": {
+                "project": {"key": project_key},
+                "parent": {"key": epic_ID},
+                "issuetype": {"name": "Task"},
+                "summary": str(ip_addr),
+
+                "customfield_10048": str(ip_addr),
+                "customfield_10050": int(team_num),
+                "customfield_10049": timestamp
+            }
+        }
+
+        response = requests.post(url=f"{url}/rest/api/3/issue", json=payload, headers=headers, auth=auth, timeout=20)
+
+        #key is what we need, BUT have to make sure there is not already something with our ip address as title
+        print(response.json()['key'])
+        print(response.text)
+        print(response.status_code)
 
 def main():
-    global url
-
-    response = requests.get(url=url, headers=headers, auth=auth, timeout=10)
-    print(str(response.status_code))
+    global issue_key
     ip_mapping()
 
+    init()
+    schedule.every(4).to(5).minutes.do(callback)
+
+    #keeps loop alive
+    while True:
+        schedule.run_pending()
+        time.sleep(120)
 
 if __name__ == '__main__':
     main()
