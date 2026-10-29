@@ -11,6 +11,7 @@ import schedule
 from dotenv import load_dotenv
 import subprocess
 from requests.auth import HTTPBasicAuth
+from statsmodels.sandbox.distributions.examples.matchdist import categ
 
 load_dotenv()
 email =  os.getenv('EMAIL')
@@ -273,16 +274,20 @@ def init():
 
 def main():
     global issue_key
-    ip_mapping()
+    try:
+        ip_mapping()
 
-    init()
-    schedule.every(4).to(5).minutes.do(callback)
-    #schedule.every(20).seconds.do(callback)
+        init()
+        schedule.every(4).to(5).minutes.do(callback)
+        #schedule.every(20).seconds.do(callback)
 
-    #keeps loop alive
-    while True:
-        schedule.run_pending()
-        time.sleep(10)
+        #keeps loop alive
+        while True:
+            schedule.run_pending()
+            time.sleep(10)
+
+    except:
+        pass
 
 if __name__ == '__main__':
     main()
