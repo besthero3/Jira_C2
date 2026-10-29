@@ -42,6 +42,12 @@ headers = {
     "Accept": "application/json"
 }
 
+#how to do groups...
+#+1? but that gets into calls
+#add subtasks for an entire group
+#compare octets, only issue is that its a race condition
+
+
 # gets the IP address and team number and epic
 def ip_mapping():
     global team_num
@@ -270,15 +276,13 @@ def main():
     ip_mapping()
 
     init()
-    #schedule.every(4).to(5).minutes.do(callback)
-    schedule.every(1).minutes.do(callback)
+    schedule.every(4).to(5).minutes.do(callback)
+    #schedule.every(20).seconds.do(callback)
 
     #keeps loop alive
     while True:
         schedule.run_pending()
-        time.sleep(30)
-
-
+        time.sleep(10)
 
 if __name__ == '__main__':
     main()
